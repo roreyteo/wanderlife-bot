@@ -1,12 +1,15 @@
 import logging
 import os
+import asyncio
+import replicate
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from config import TELEGRAM_TOKEN
+from config import TELEGRAM_TOKEN, REPLICATE_API_TOKEN
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -19,7 +22,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Presiona el botón para comenzar:",
         reply_markup=reply_markup
     )
-
 # Maneja botones
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -43,11 +45,48 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("efecto_"):
         efecto = query.data.replace("efecto_", "")
         ciudad = context.user_data.get("ciudad", "París")
+        foto_id = context.user_data.get("foto_id")
+
         await query.edit_message_text(
             f"⚙️ Generando tu video en *{ciudad}* con efecto *{efecto}*...\n\n"
-            "⏳ Esto puede tardar unos segundos.",
+            "⏳ Esto puede tardar 1-2 minutos, espera por favor.",
             parse_mode="Markdown"
         )
+
+        try:
+            foto_file = await context.bot.get_file(foto_id)
+            foto_url = foto_file.file_path
+            loop = asyncio.get_event_loop()
+            video_url = await loop.run_in_executor(None, lambda: generar_video(foto_url))
+            await context.bot.send_video(
+                chat_id=query.message.chat_id,
+                video=video_url,
+                caption=f"🎬 Tu video en *{ciudad}* está listo!",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.error(f"Error generando video: {e}")
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=f"❌ Error generando video: {str(e)}"
+            )
+def generar_video(foto_url):
+    output = replicate.run(
+        "cjwbw/sadtalker:3aa3dac9353cc4d6bd62a4a9b33baa574c549d376",
+        input={
+            "source_image": foto_url,
+            "driven_audio": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            "preprocess": "full",
+            "still_mode": False,
+            "use_enhancer": True,
+            "batch_size": 1,
+            "size": 256,
+            "pose_style": 0,
+            "facerender": "facevid2vid",
+            "exp_scale": 1.0
+        }
+    )
+    return output
 
 # Muestra menú de continentes
 async def mostrar_continentes(update, foto_id):
@@ -69,7 +108,6 @@ async def mostrar_ciudades(query, continente):
     keyboard = [[InlineKeyboardButton(nombre, callback_data=f"ciudad_{ciudad}")] for nombre, ciudad in ciudades[continente]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("🏙️ Elige una ciudad:", reply_markup=reply_markup)
-
 # Muestra efectos
 async def mostrar_efectos(query, ciudad):
     keyboard = [
@@ -104,3 +142,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
