@@ -22,6 +22,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Presiona el botón para comenzar:",
         reply_markup=reply_markup
     )
+
 # Maneja botones
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -68,7 +69,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Error generando video: {e}")
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
-                text=f"❌ Error generando video: {str(e)}"
+                text=f"❌ Error: {str(e)}"
             )
 def generar_video(foto_url):
     output = replicate.run(
@@ -121,8 +122,10 @@ async def mostrar_efectos(query, ciudad):
 
 # Recibe foto
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("FOTO RECIBIDA")
     foto = update.message.photo[-1]
     context.user_data["foto_id"] = foto.file_id
+    logger.info(f"FOTO ID: {foto.file_id}")
     await mostrar_continentes(update, foto.file_id)
 
 # Error handler
@@ -142,4 +145,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
